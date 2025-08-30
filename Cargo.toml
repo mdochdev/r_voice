@@ -1,0 +1,46 @@
+[package]
+name = "r_voice"
+version = "0.1.0"
+authors = ["Vernon Murdoch <vernonm@cybe.tech>"]
+edition = "2021"
+resolver = "2"
+rust-version = "1.77"
+
+[[bin]]
+name = "r_voice"
+harness = false # do not use the built in cargo test harness -> resolve rust-analyzer errors
+
+[profile.release]
+opt-level = "s"
+
+[profile.dev]
+debug = true    # Symbols are nice and they don't increase the size on Flash
+opt-level = "z"
+
+[features]
+default = []
+
+experimental = ["esp-idf-svc/experimental"]
+
+[dependencies]
+#log = "0.4"
+#env_logger = "0.11"
+esp-idf-svc =  { version = "0.51", features = ["binstart"] }
+esp-idf-sys = { version = "0.36" }
+esp-idf-hal = "0.45"
+anyhow = "1.0"
+heapless = "0.9"
+tokio = { version = "1"}
+
+[build-dependencies]
+embuild = "0.33"
+copy_to_output = "2.2"
+anyhow = "1.0"
+
+[package.metadata.espflash]
+partition_table = "partitions.csv" # Supports CSV and binary formats
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = {name = "espressif/esp-sr", version = "2.1.5"}
+bindings_header = "bindings.h"
+bindings_module = "esp_sr"

@@ -1,0 +1,75 @@
+[env]
+# Where Cargo puts build outputs (defaults to "target" if not set)
+CARGO_TARGET_DIR = { value = "target", condition = { env_not_set = true } }
+
+# The ESP-IDF cargo target triple for ESP32-S3 + esp-idf
+MCU_TARGET = "xtensa-esp32s3-espidf"
+
+# Your model partition offset (from partitions.csv) — set this to YOUR value
+MODEL_PART_OFFSET = "0x410000"
+
+# Optional: your partitions.csv path for firmware flashing
+PARTITIONS_FILE = "partitions.csv"
+
+# --------------------------- tasks ---------------------------
+
+# Just flashes the firmware (app/bootloader/partitions) via cargo-espflash
+[tasks.flash-firmware]
+command = "cargo"
+args    = ["espflash", "flash", "--partition-table", "./${PARTITIONS_FILE}"]
+
+# Finds srmodels.bin under target/.../esp-idf-sys-*/out/srmodels/ and flashes it
+[tasks.flash-srmodels]
+script_runner = "@duckscript"
+script = [
+  # resolve target dir
+  "target_dir = get_env CARGO_TARGET_DIR",
+  "echo TARGET_DIR ${CARGO_TARGET_DIR}",
+  "if is_empty ${target_dir}",
+  "    target_dir = set target",
+  "    echo target_dir ${target_dir}",
+  "end",
+
+  # map cargo-make profile -> dir
+  "profile = get_env CARGO_MAKE_PROFILE",
+  "if eq ${profile} development",
+  "    profdir = set debug",
+  "else",
+  "    profdir = set release",
+  "end",
+
+  # mcu target
+  "mcutarget = get_env MCU_TARGET",
+  "if is_empty ${mcutarget}",
+  "    mcutarget = set xtensa-esp32s3-espidf",
+  "end",
+
+  # build glob without quotes
+  "pattern = concat ${target_dir} / ${mcutarget} / ${profdir} / build /  esp-idf-sys-* /  out / build / srmodels /  srmodels.bin",
+  "echo Searching: ${pattern}",
+
+  # find srmodels.bin
+  "files = glob_array ${pattern}",
+  "len = array_length ${files}",
+  "if eq ${len} 0",
+  "    echo ERROR: srmodels.bin not found. Build first: cargo build --release --target ${mcutarget}",
+  "    exit 1",
+  "end",
+
+  "srmodels = array_get ${files} 0",
+  "echo Found srmodels: ${srmodels}",
+
+  # offset
+  "offset = get_env MODEL_PART_OFFSET",
+  "if is_empty ${offset}",
+  "    echo ERROR: MODEL_PART_OFFSET not set",
+  "    exit 1",
+  "end",
+
+  # flash it
+  "exec espflash write-bin ${offset} ${srmodels}",
+]
+
+# One-shot: flash firmware, then flash srmodels.bin
+[tasks.flash-all]
+dependencies = ["flash-firmware", "flash-srmodels"]
