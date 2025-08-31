@@ -9,7 +9,6 @@ use esp_idf_hal::i2s::config::{ClockSource, Config, DataBitWidth, MclkMultiple, 
 use esp_idf_hal::prelude::Peripherals;
 use esp_idf_sys::EspError;
 use esp_idf_sys::esp_sr::*;
- mod data;
 
 fn main() -> Result<(), EspError> {
 
