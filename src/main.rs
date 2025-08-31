@@ -9,6 +9,7 @@ use esp_idf_hal::i2s::config::{ClockSource, Config, DataBitWidth, MclkMultiple, 
 use esp_idf_hal::prelude::Peripherals;
 use esp_idf_sys::EspError;
 use esp_idf_sys::esp_sr::*;
+ mod data;
 
 fn main() -> Result<(), EspError> {
 
@@ -42,7 +43,6 @@ fn main() -> Result<(), EspError> {
     let ctx = get_afe_data();
     let ctx = Arc::new(ctx);
 
-    
     // process task (VAD/DOA/WakeNet)      
     let t1 = {
         let ctx_1 = Arc::clone(&ctx);
@@ -82,7 +82,7 @@ fn get_afe_data() -> Ctx {
     unsafe {
         let models = get_models();
         let afe_config = afe_config_init(CString::new("MNNN").unwrap().as_ptr(), models, afe_type_t_AFE_TYPE_SR, afe_mode_t_AFE_MODE_HIGH_PERF);
-        (*afe_config).wakenet_model_name = CString::new("wn9s_hiesp").unwrap().into_raw();// esp_srmodel_filter(models,CString::new("wn").unwrap().as_ptr(), ptr::null());
+        (*afe_config).wakenet_model_name = CString::new("wn9s_hiesp").unwrap().into_raw();
         (*afe_config).aec_init      = false;
         (*afe_config).pcm_config.total_ch_num = 2;
         (*afe_config).pcm_config.mic_num = 1;
@@ -126,10 +126,14 @@ impl Ctx {
             (*self.afe_handle).get_channel_num.expect("get_channel_num")(self.afe_data)
         }
     }
-    fn feed(&self, buffer: Vec<u16>) {
+    fn feed(&self, buffer: Vec<i16>) {
         unsafe { 
-            //println!("{:x?}", buffer.as_ptr());
             (*self.afe_handle).feed.expect("feed")(self.afe_data, buffer.as_ptr() as _);
+        }
+    }
+    fn enable_wakenet(&self) {
+        unsafe {
+            (*self.afe_handle).enable_wakenet.expect("Enable wakenet")(self.afe_data);
         }
     }
 }
@@ -145,12 +149,14 @@ fn feed_task(mut rx: I2sDriver<'static, I2sRx>, ctx: &Arc<Ctx>) -> Result<(), Es
         //let feed_channel: usize = 2;
         
         let mut buffer: Vec<u8> = vec![0u8; (audio_chunksize * 2 * nch) as usize];
-        let mut u16_buf: Vec<u16> = vec![0u16; (audio_chunksize * nch) as usize];
+        //let mut u16_buf: Vec<u16> = vec![0u16; (audio_chunksize * nch) as usize];
         println!("buffer len {}", buffer.len());
         loop {
+            // Buffer is always full unless timeout is hit.
             let _read = rx.read(&mut buffer, 1000)?;
-            u16_buf = get_bits(&buffer);
-            ctx.feed(u16_buf);
+
+            let i16_buf = get_bits(&buffer);
+            ctx.feed(i16_buf);
         }
 }
 
@@ -164,11 +170,13 @@ fn process_task(ctx: &Arc<Ctx>) {
     let afe_chunksize           = ctx.get_fetch_chunk_size();
 
     assert!(mu_chunksize == afe_chunksize);
-    //esp_mn_commands_alloc(multinet, model_data);
-    //esp_mn_commands_add(1,  CString::new("READ THE NEWS").unwrap().as_ptr());
-    //esp_mn_commands_add(2,  CString::new("MAKE ME A COFFEE").unwrap().as_ptr());
-    //esp_mn_commands_add(3,  CString::new("FAN SPEED").unwrap().as_ptr());
-    //esp_mn_commands_update();
+    unsafe {
+        esp_mn_commands_alloc(multinet, model_data);
+        esp_mn_commands_add(1,  CString::new("read the news").unwrap().as_ptr());
+        esp_mn_commands_add(2,  CString::new("MAKE ME A COFFEE").unwrap().as_ptr());
+        esp_mn_commands_add(3,  CString::new("FAN SPEED").unwrap().as_ptr());
+        esp_mn_commands_update();
+    }
 
     unsafe{(*multinet).print_active_speech_commands.expect("Print active speech commands")(model_data)};
     println!("Enabling wakenet");
@@ -214,8 +222,8 @@ fn process_task(ctx: &Arc<Ctx>) {
             if mn_state == esp_mn_state_t_ESP_MN_STATE_TIMEOUT {
                 let mn_result = unsafe{(*multinet).get_results.expect("Get Results")(model_data)};
                 unsafe {println!("timeout, string: {:?}", CStr::from_bytes_until_nul(&(*mn_result).string));}
-                //(*ctx.afe_handle).enable_wakenet.expect("Enable wakenet")(ctx.afe_data);
-                //detect_flag = false;
+                ctx.enable_wakenet();
+                detect_flag = false;
                 println!("-----------awaits to be waken up-----------");
                 continue;
             }
@@ -224,18 +232,18 @@ fn process_task(ctx: &Arc<Ctx>) {
     }
 }
 
-fn get_bits(input: &Vec<u8>) -> Vec<u16> {
+fn get_bits(input: &Vec<u8>) -> Vec<i16> {
     assert!(input.len() % 4 == 0, "Length must be divisible by 4");
 
     let mut result = Vec::new();
 
     for chunk in input.chunks_exact(4) {
-        let val = i32::from_be_bytes([chunk[2], chunk[3], chunk[0], chunk[1]]);
+        let val = i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
         let shifted = val >> 14;
 
         // Split into high 16 bits and low 16 bits
-        let high = ((shifted >> 16) & 0xFFFF) as u16;
-        let low  = (shifted & 0xFFFF) as u16;
+        let high = ((shifted >> 16) & 0xFFFF) as i16;
+        let low  = (shifted & 0xFFFF) as i16;
 
         result.push(low);
         result.push(high);
@@ -243,5 +251,3 @@ fn get_bits(input: &Vec<u8>) -> Vec<u16> {
     result
 
 }
-
-
