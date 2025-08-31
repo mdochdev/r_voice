@@ -1,19 +1,29 @@
-# ESP32S3
+# Overview
 
-This is using a freenove-esp32s3-wroom board. But any chip esp32s3 will work. It is configured to 16Mb. Hardcoded in .cargo/config.toml and also in the partitions.csv and a few other locations. You will need to fix them all for a smaller board.
+This is an example in rust how to import other components not already imported by esp-idf-sys. In this example esp-sr is imported, models are added in a custom partition. NB: esp-idf-sys does this under the covers in the rust build directory. So there is a little bit of path magic that occurs.
 
-# ESP-SR
+Apart from the usual `cargo run` first time round you will need to build and flash the models. Simplest way is `cargo full-flash`, but the running app may not find the model first run due to how espflash works. Either reboot the device or reflash/reboot with `cargo run`
+Everything should just work from there.
 
-The sound libraries (AFE, VAD etc) are only supported on a few esp32 chipsets ESP32, ESP32S3 and ESP32P4. There could be others but check before you try something else.
+# WakeNet and MultiNet
+By importing esp-sr we get access to WakeNet and MultiNet actions as well as other cool stuff like DOA, AFE, VAD etc... This example is the basics almost exactly like the skainet multinet example in C. 
 
-# INMP441 Mic.
 
-This example expects a INMP441 mic to be connected to the ports defined in main. If you plug into others change as needed. The mic is 24-bits, when used with the I2S it needs to be read as 32-bit chunks and shifted. Currently configured in mono mode with L/R -> GND
+## ESP32S3
+This is using a freenove-esp32s3-wroom board. But any chip esp32s3 will work. It is configured to 16Mb flash, hardcoded in .cargo/config.toml and also in the partitions.csv and a few other locations. You will need to fix them all for a smaller memory or different type of chip.
+Only a few chips are supported for AFE so check the espressif website for support.
+
+## INMP441 Mic.
+This example expects a INMP441 mic to be connected to the ports defined in main. If you plug into others change as needed. The mic is 24-bits, when used with the I2S it needs to be read as 32-bit chunks and shifted. Currently configured with a single mic in mono mode IE: L/R -> GND
 
 
 # References
+Check out:
 
-I used this working reference written in C which I updated to the latest libraries and wn7_hiesp, mn6_en.
-https://github.com/devweirdo/s3-sr
+esp-idf-sys for what files are needed to modify a build.
+esp-sr for what it is
+esp-skainet for other c examples you can attempt to port.
+Also this for how to shift the bits for a INMP441: https://github.com/devweirdo/s3-sr
 
-The really interesting code is how the bits are shifted.
+Join the rust espressif matrix chat mentioned in the esp-idf-sys repo.
+
